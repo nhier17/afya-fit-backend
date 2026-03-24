@@ -2,6 +2,9 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 
+import membersRoutes from "./routes/members";
+import packagesRoutes from "./routes/packages";
+
 const app = express();
 const PORT = process.env.PORT || 8000;
 
@@ -15,6 +18,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 app.use(express.json());
+
+app.use("/api/members", membersRoutes);
+app.use("/api/packages", packagesRoutes);
 
 app.get("/", (req, res) => {
     res.send("Backend server is running!");

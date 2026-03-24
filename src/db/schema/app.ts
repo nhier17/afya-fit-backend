@@ -29,7 +29,7 @@ export const membershipStatusEnum = pgEnum("membership_status", [
   "inactive",
 ]);
 
-export const memberTypeEnum = pgEnum("member_type", ["normal", "gym offer"]);
+export const memberTypeEnum = pgEnum("member_type", ["normal", "gym"]);
 
 export const packageCategoryEnum = pgEnum("package_category", [
   "normal",
@@ -42,8 +42,6 @@ export const paymentMethodEnum = pgEnum("payment_method", [
   "paybill",
   "cheque",
 ]);
-
-
 
 export const checkinMethodEnum = pgEnum("checkin_method", [
   "fingerprint",
@@ -63,7 +61,6 @@ export const smsPurposeEnum = pgEnum("sms_purpose", [
   "payment",
   "general",
 ]);
-
 
 export const members = pgTable(
   "members",
@@ -97,15 +94,22 @@ export const memberships = pgTable(
   "memberships",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    memberId: uuid("member_id").notNull(),
-    packageId: uuid("package_id").notNull(),
-    startDate: timestamp("start_date").notNull(),
-    endDate: timestamp("end_date").notNull(),
+    memberId: uuid("member_id").notNull()
+        .references(() => members.id, { onDelete: "restrict" }),
+    packageId: uuid("package_id")
+        .notNull()
+        .references(() => packages.id, { onDelete: "restrict"}),
+    paidAmount: decimal("paid_amount", {
+      precision: 10,
+      scale: 2,
+    }).default("0"),
     totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
     registrationFee: decimal("registration_fee", {
       precision: 10,
       scale: 2,
     }).default("0"),
+    startDate: timestamp("start_date").notNull(),
+    endDate: timestamp("end_date").notNull(),
     status: membershipStatusEnum("status")
       .default("active")
       .notNull(),
@@ -120,7 +124,9 @@ export const memberships = pgTable(
 
 export const payments = pgTable("payments", {
   id: uuid("id").primaryKey().defaultRandom(),
-  membershipId: uuid("membership_id").notNull(),
+  membershipId: uuid("membership_id")
+      .notNull()
+      .references(() => memberships.id, { onDelete: "cascade" }),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   method: paymentMethodEnum("method").notNull(),
   transactionReference: varchar("transaction_reference", { length: 255 }),
@@ -133,7 +139,9 @@ export const checkins = pgTable(
   "checkins",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    memberId: uuid("member_id").notNull(),
+    memberId: uuid("member_id")
+        .notNull()
+        .references(() => members.id, { onDelete: "cascade" }),
     method: checkinMethodEnum("method").notNull(),
     checkinTime: timestamp("checkin_time").defaultNow().notNull(),
   },
@@ -157,13 +165,15 @@ export const sales = pgTable("sales", {
   id: uuid("id").primaryKey().defaultRandom(),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: paymentMethodEnum("payment_method").notNull(),
-  soldBy: uuid("sold_by"),
+  soldBy: uuid("sold_by").references(() => users.id),
   ...timestamps,
 });
 
 export const saleItems = pgTable("sale_items", {
   id: uuid("id").primaryKey().defaultRandom(),
-  saleId: uuid("sale_id").notNull(),
+  saleId: uuid("sale_id")
+      .notNull()
+      .references(() => sales.id, { onDelete: "cascade" }),
   productId: uuid("product_id").notNull(),
   quantity: integer("quantity").notNull(),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
@@ -192,7 +202,9 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   email: varchar("email", { length: 150 }).notNull().unique(),
   passwordHash: text("password_hash").notNull(),
-  roleId: uuid("role_id").notNull(),
+  roleId: uuid("role_id")
+      .notNull()
+      .references(() => roles.id, { onDelete: "restrict" }),
   isActive: boolean("is_active").default(true).notNull(),
   ...timestamps,
 });
@@ -200,7 +212,8 @@ export const users = pgTable("users", {
 
 export const smsLogs = pgTable("sms_logs", {
   id: uuid("id").primaryKey().defaultRandom(),
-  memberId: uuid("member_id"),
+  memberId: uuid("member_id")
+      .references(() => members.id, { onDelete: "set null" }),
   phone: varchar("phone", { length: 20 }).notNull(),
   message: text("message").notNull(),
   purpose: smsPurposeEnum("purpose").notNull(),

@@ -11,7 +11,7 @@ import {
   jsonb,
   index
 } from "drizzle-orm/pg-core";
-import { relations, sql } from "drizzle-orm";
+import { relations } from "drizzle-orm";
 
 const timestamps = {
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -43,6 +43,10 @@ export const paymentMethodEnum = pgEnum("payment_method", [
   "cheque",
 ]);
 
+export const paymentTypeEnum = pgEnum("payment_type",[
+    "registration", "package", "balance"
+])
+
 export const checkinMethodEnum = pgEnum("checkin_method", [
   "fingerprint",
   "manual",
@@ -65,13 +69,14 @@ export const smsPurposeEnum = pgEnum("sms_purpose", [
 export const members = pgTable(
   "members",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
     firstName: text("first_name").notNull(),
     lastName: text("last_name").notNull(),
     gender: genderEnum("gender").notNull(),
     memberType: memberTypeEnum("member_type").notNull(),
     phone: varchar("phone", { length: 20 }).notNull().unique(),
     isActive: boolean("is_active").default(true).notNull(),
+    activeMembershipId: uuid("active_membership_id"),
     ...timestamps,
   },
   (table) => ({
@@ -80,7 +85,7 @@ export const members = pgTable(
 );
 
 export const packages = pgTable("packages", {
-  id: uuid("id").primaryKey().defaultRandom(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
   category: packageCategoryEnum("category").notNull(),
   durationInDays: integer("duration_in_days").notNull(),
@@ -94,9 +99,9 @@ export const memberships = pgTable(
   "memberships",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    memberId: uuid("member_id").notNull()
+    memberId: integer("member_id").notNull()
         .references(() => members.id, { onDelete: "restrict" }),
-    packageId: uuid("package_id")
+    packageId: integer("package_id")
         .notNull()
         .references(() => packages.id, { onDelete: "restrict"}),
     paidAmount: decimal("paid_amount", {
@@ -122,6 +127,35 @@ export const memberships = pgTable(
   })
 );
 
+export const dailyMembers = pgTable(
+    "daily_members",
+    {
+      id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+      firstName: text("first_name").notNull(),
+      lastName: text("last_name").notNull(),
+      gender: genderEnum("gender").notNull(),
+      phone: varchar("phone", { length: 20 }).notNull(),
+      packageId: integer("package_id")
+          .notNull()
+          .references(() => packages.id, { onDelete: "restrict" }),
+      amountPaid: decimal("amount_paid", {
+        precision: 10,
+        scale: 2,
+      }).notNull(),
+      paymentMethod: paymentMethodEnum("payment_method").notNull(),
+      paymentDate: timestamp("payment_date").notNull(),
+      isActive: boolean("is_active")
+          .default(true)
+          .notNull(),
+
+      ...timestamps,
+    },
+    (table) => ({
+      phoneIdx: index("daily_members_phone_idx").on(table.phone),
+      paymentDateIdx: index("daily_members_payment_date_idx").on(table.paymentDate),
+    })
+);
+
 export const payments = pgTable("payments", {
   id: uuid("id").primaryKey().defaultRandom(),
   membershipId: uuid("membership_id")
@@ -129,7 +163,12 @@ export const payments = pgTable("payments", {
       .references(() => memberships.id, { onDelete: "cascade" }),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   method: paymentMethodEnum("method").notNull(),
+  type: paymentTypeEnum("type").notNull(),
+  receiptNumber: varchar("receipt_number", { length: 50 }).notNull().unique(),
+  notes: text("notes"),
+  recordedBy: integer("recorded_by"),
   transactionReference: varchar("transaction_reference", { length: 255 }),
+  transactionGroupId: uuid("transaction_group_id").notNull(),
   paidAt: timestamp("paid_at"),
   ...timestamps,
 });
@@ -139,7 +178,7 @@ export const checkins = pgTable(
   "checkins",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    memberId: uuid("member_id")
+    memberId: integer("member_id")
         .notNull()
         .references(() => members.id, { onDelete: "cascade" }),
     method: checkinMethodEnum("method").notNull(),
@@ -174,19 +213,20 @@ export const saleItems = pgTable("sale_items", {
   saleId: uuid("sale_id")
       .notNull()
       .references(() => sales.id, { onDelete: "cascade" }),
-  productId: uuid("product_id").notNull(),
+  productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id),
   quantity: integer("quantity").notNull(),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   ...timestamps,
 });
 
 export const expenses = pgTable("expenses", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  title: text("title").notNull(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   category: text("category"),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  paymentMethod: paymentMethodEnum("payment_method"),
   expenseDate: timestamp("expense_date").defaultNow().notNull(),
+  description: text("description"),
   createdBy: uuid("created_by"),
   ...timestamps,
 });
@@ -212,7 +252,7 @@ export const users = pgTable("users", {
 
 export const smsLogs = pgTable("sms_logs", {
   id: uuid("id").primaryKey().defaultRandom(),
-  memberId: uuid("member_id")
+  memberId: integer("member_id").notNull()
       .references(() => members.id, { onDelete: "set null" }),
   phone: varchar("phone", { length: 20 }).notNull(),
   message: text("message").notNull(),
@@ -224,3 +264,64 @@ export const smsLogs = pgTable("sms_logs", {
   sentAt: timestamp("sent_at").defaultNow().notNull(),
   ...timestamps,
 });
+
+export const membersRelations = relations(members, ({ one, many }) => ({
+  activeMembership: one(memberships, {
+    fields: [members.activeMembershipId],
+    references: [memberships.id],
+  }),
+  memberships: many(memberships),
+  checkins: many(checkins),
+  smsLogs: many(smsLogs),
+}));
+
+export const packagesRelations = relations(packages, ({ many }) => ({
+  memberships: many(memberships),
+}));
+
+export const membershipsRelations = relations(memberships, ({ one, many }) => ({
+  member: one(members),
+  package: one(packages),
+  payments: many(payments),
+}));
+
+export const paymentsRelations = relations(payments, ({ one }) => ({
+  membership: one(memberships),
+}));
+
+export const checkinsRelations = relations(checkins, ({ one }) => ({
+  member: one(members),
+}));
+
+export const productsRelations = relations(products, ({ many }) => ({
+  saleItems: many(saleItems),
+}));
+
+export const salesRelations = relations(sales, ({ one, many }) => ({
+  soldBy: one(users, {
+    fields: [sales.soldBy],
+    references: [users.id],
+  }),
+  saleItems: many(saleItems),
+}));
+
+export const saleItemsRelations = relations(saleItems, ({ one }) => ({
+  sale: one(sales),
+  product: one(products),
+}));
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  role: one(roles, {
+    fields: [users.roleId],
+    references: [roles.id],
+  }),
+  sales: many(sales),
+}));
+
+export const rolesRelations = relations(roles, ({ many }) => ({
+  users: many(users),
+}));
+
+export const smsLogsRelations = relations(smsLogs, ({ one }) => ({
+  member: one(members),
+}));

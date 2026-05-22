@@ -1,32 +1,32 @@
 CREATE TYPE "public"."checkin_method" AS ENUM('fingerprint', 'manual');--> statement-breakpoint
 CREATE TYPE "public"."gender" AS ENUM('male', 'female');--> statement-breakpoint
-CREATE TYPE "public"."member_type" AS ENUM('normal', 'gym offer');--> statement-breakpoint
+CREATE TYPE "public"."member_type" AS ENUM('normal', 'gym');--> statement-breakpoint
 CREATE TYPE "public"."membership_status" AS ENUM('active', 'expired', 'inactive');--> statement-breakpoint
 CREATE TYPE "public"."package_category" AS ENUM('normal', 'offer');--> statement-breakpoint
 CREATE TYPE "public"."payment_method" AS ENUM('cash', 'm-pesa', 'paybill', 'cheque');--> statement-breakpoint
+CREATE TYPE "public"."payment_type" AS ENUM('registration', 'package', 'balance');--> statement-breakpoint
 CREATE TYPE "public"."sms_purpose" AS ENUM('welcome', 'reminder', 'payment', 'general');--> statement-breakpoint
 CREATE TYPE "public"."sms_status" AS ENUM('queued', 'sent', 'delivered', 'failed');--> statement-breakpoint
 CREATE TABLE "checkins" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"member_id" uuid NOT NULL,
+	"member_id" integer NOT NULL,
 	"method" "checkin_method" NOT NULL,
 	"checkin_time" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "expenses" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"title" text NOT NULL,
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "expenses_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"category" text,
 	"amount" numeric(10, 2) NOT NULL,
-	"payment_method" "payment_method",
 	"expense_date" timestamp DEFAULT now() NOT NULL,
+	"description" text,
 	"created_by" uuid,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "members" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "members_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"first_name" text NOT NULL,
 	"last_name" text NOT NULL,
 	"gender" "gender" NOT NULL,
@@ -40,12 +40,13 @@ CREATE TABLE "members" (
 --> statement-breakpoint
 CREATE TABLE "memberships" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"member_id" uuid NOT NULL,
-	"package_id" uuid NOT NULL,
-	"start_date" timestamp NOT NULL,
-	"end_date" timestamp NOT NULL,
+	"member_id" integer NOT NULL,
+	"package_id" integer NOT NULL,
+	"paid_amount" numeric(10, 2) DEFAULT '0',
 	"total_amount" numeric(10, 2) NOT NULL,
 	"registration_fee" numeric(10, 2) DEFAULT '0',
+	"start_date" timestamp NOT NULL,
+	"end_date" timestamp NOT NULL,
 	"status" "membership_status" DEFAULT 'active' NOT NULL,
 	"auto_renew" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
@@ -53,7 +54,7 @@ CREATE TABLE "memberships" (
 );
 --> statement-breakpoint
 CREATE TABLE "packages" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "packages_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
 	"name" text NOT NULL,
 	"category" "package_category" NOT NULL,
 	"duration_in_days" integer NOT NULL,
@@ -68,6 +69,7 @@ CREATE TABLE "payments" (
 	"membership_id" uuid NOT NULL,
 	"amount" numeric(10, 2) NOT NULL,
 	"method" "payment_method" NOT NULL,
+	"type" "payment_type" NOT NULL,
 	"transaction_reference" varchar(255),
 	"paid_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL,
@@ -114,7 +116,7 @@ CREATE TABLE "sales" (
 --> statement-breakpoint
 CREATE TABLE "sms_logs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"member_id" uuid,
+	"member_id" integer NOT NULL,
 	"phone" varchar(20) NOT NULL,
 	"message" text NOT NULL,
 	"purpose" "sms_purpose" NOT NULL,
@@ -139,6 +141,15 @@ CREATE TABLE "users" (
 	CONSTRAINT "users_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
+ALTER TABLE "checkins" ADD CONSTRAINT "checkins_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "memberships" ADD CONSTRAINT "memberships_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "memberships" ADD CONSTRAINT "memberships_package_id_packages_id_fk" FOREIGN KEY ("package_id") REFERENCES "public"."packages"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payments" ADD CONSTRAINT "payments_membership_id_memberships_id_fk" FOREIGN KEY ("membership_id") REFERENCES "public"."memberships"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "sale_items" ADD CONSTRAINT "sale_items_sale_id_sales_id_fk" FOREIGN KEY ("sale_id") REFERENCES "public"."sales"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "sale_items" ADD CONSTRAINT "sale_items_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "sales" ADD CONSTRAINT "sales_sold_by_users_id_fk" FOREIGN KEY ("sold_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "sms_logs" ADD CONSTRAINT "sms_logs_member_id_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."members"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "users" ADD CONSTRAINT "users_role_id_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "public"."roles"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "checkin_member_idx" ON "checkins" USING btree ("member_id");--> statement-breakpoint
 CREATE INDEX "members_phone_idx" ON "members" USING btree ("phone");--> statement-breakpoint
 CREATE INDEX "membership_member_idx" ON "memberships" USING btree ("member_id");--> statement-breakpoint

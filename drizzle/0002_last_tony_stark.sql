@@ -1,0 +1,1 @@
+ALTER TABLE "payments" ADD COLUMN "transaction_group_id" uuid NOT NULL;

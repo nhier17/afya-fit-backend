@@ -1,18 +1,39 @@
 import { Router } from "express";
 import { db } from "../db";
-import { packages } from "../db/schema";
-import { eq } from "drizzle-orm";
+import {memberships, packages} from "../db/schema";
+import {and, desc, eq, getTableColumns, ilike, or, sql} from "drizzle-orm";
 
 const router = Router();
 
-//get all packages
+//get all packages with category filter
 router.get("/", async (req, res) => {
     try {
-        const allPackages = await db.select().from(packages);
+        const { search, category } = req.query;
+        const filterConditions = [];
+        if (search) {
+            filterConditions.push(
+                or(
+                    ilike(packages.name, `%${search}%`)
+                )
+            )
+        }
+        if (category) {
+            filterConditions.push(eq(packages.category, category as any))
+        }
+        const whereClause = filterConditions.length > 0 ? and(...filterConditions) : undefined;
+
+        const packagesList = await db
+                .select({
+                ...getTableColumns((packages)),
+                      })
+                .from(packages)
+                .where(whereClause)
+                .orderBy(desc(packages.createdAt))
+        ;
 
         res.status(200).json({
-            data: allPackages,
-            total: allPackages.length,
+            data: packagesList,
+            total: packagesList.length,
         });
     } catch (error) {
         console.error("Get /packages error: ", error);
@@ -88,6 +109,40 @@ router.post("/", async (req, res) => {
             success: false,
             message: error.message || "Failed to create package",
         });
+    }
+});
+
+// GET PACKAGE BY ID
+router.get("/:id", async (req, res) => {
+    try {
+        const packageId = Number(req.params.id);
+
+        if (!Number.isFinite(packageId)) {
+            return res.status(400).json({ error: "Invalid package ID" });
+        }
+        const [packageData] = await db
+            .select()
+            .from(packages)
+            .where(eq(packages.id, packageId));
+
+        if (!packageData) {
+            return res.status(404).json({ error: "Package not found" });
+        }
+
+        const [memberCount] = await Promise.all([
+            db
+                .select({ count: sql<number>`count(*)`})
+                .from(memberships)
+                .where(eq(memberships.packageId, packageId))
+        ])
+        res.status(200).json({
+            data: packageData,
+            totals: memberCount[0]?.count ?? 0,
+        });
+
+    } catch (error) {
+        console.error("Get /packages/:id error: ", error);
+        res.status(500).json({ error: "Failed to fetch package" });
     }
 });
 

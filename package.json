@@ -14,7 +14,6 @@
   "author": "",
   "license": "ISC",
   "description": "",
-  "type": "module",
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
     "cors": "^2.8.6",

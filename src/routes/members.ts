@@ -1,7 +1,7 @@
 import express from "express";
 import { eq, ilike, or, and, desc, sql, asc } from "drizzle-orm";
 import { db } from "../db";
-import { members, memberships, packages, payments } from "../db/schema/app";
+import { members, memberships, packages, payments } from "../db/schema";
 import {generateReceiptNumber} from "../lib/utils";
 import { randomUUID} from "node:crypto";
 

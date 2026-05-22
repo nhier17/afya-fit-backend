@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../db";
-import { expenses } from "../db/schema/app";
+import { expenses } from "../db/schema";
 import { and, desc, eq, getTableColumns, ilike, or } from "drizzle-orm";
 
 const router = Router();

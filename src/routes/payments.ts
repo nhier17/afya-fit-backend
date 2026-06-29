@@ -66,6 +66,7 @@ router.get("/:transactionGroupId/receipt", async (req, res) => {
         );
 
         const firstPayment = transactionPayments[0];
+        if (!firstPayment) throw Error;
 
         res.json({
             data: {

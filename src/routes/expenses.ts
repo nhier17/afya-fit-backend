@@ -1,14 +1,19 @@
 import { Router } from "express";
 import { db } from "../db";
-import { expenses } from "../db/schema";
-import { and, desc, eq, getTableColumns, ilike, or } from "drizzle-orm";
+import {expenses, products} from "../db/schema";
+import {and, desc, eq, getTableColumns, ilike, or, sql} from "drizzle-orm";
 
 const router = Router();
 
 // GET all expenses with filtering and search
 router.get("/", async (req, res) => {
     try {
-        const { search, category } = req.query;
+        const { search, page = 1, limit = 10 } = req.query;
+
+        const currentPage = Math.max(1, +page);
+        const limitPerPage = Math.max(1, +limit);
+        const offset = (currentPage - 1) * limitPerPage;
+
         const filterConditions = [];
 
         if (search) {
@@ -21,17 +26,31 @@ router.get("/", async (req, res) => {
 
         const whereClause = filterConditions.length > 0 ? and(...filterConditions) : undefined;
 
+        const countResult = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(expenses)
+            .where(whereClause);
+
+        const totalCount = countResult[0]?.count ?? 0;
+
         const expensesList = await db
             .select({
                 ...getTableColumns(expenses),
             })
             .from(expenses)
             .where(whereClause)
+            .limit(limitPerPage)
+            .offset(offset)
             .orderBy(desc(expenses.createdAt));
 
         res.status(200).json({
             data: expensesList,
-            total: expensesList.length,
+            pagination: {
+                page: currentPage,
+                limit: limitPerPage,
+                total: totalCount,
+                totalPages: Math.ceil(totalCount / limitPerPage),
+            }
         });
     } catch (error) {
         console.error("Get /expenses error: ", error);
@@ -65,7 +84,6 @@ router.post("/", async (req, res) => {
                 category: name,
                 amount: amount.toString(),
                 expenseDate: new Date(datePaid),
-                // createdBy: ... (add user id if authentication is implemented)
             })
             .returning();
 

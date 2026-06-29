@@ -193,20 +193,42 @@ export const products = pgTable("products", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   category: text("category"),
+  sku: text("sku").unique(),
   buyingPrice: decimal("buying_price", { precision: 10, scale: 2 }),
   sellingPrice: decimal("selling_price", { precision: 10, scale: 2 }).notNull(),
-  stockQuantity: integer("stock_quantity").default(0).notNull(),
+  stockQuantity: integer("stock_quantity").notNull(),
   lowStockAlert: integer("low_stock_alert").default(5),
+   isActive: boolean("is_active").default(true).notNull(),
   ...timestamps,
 });
+
+export const inventoryMovements = pgTable(
+    "inventory_movements",
+    {
+        id: uuid("id").primaryKey().defaultRandom(),
+        productId: uuid("product_id")
+            .notNull()
+            .references(() => products.id, { onDelete: "cascade" }),
+        quantity: integer("quantity").notNull(),
+        type: text("type").notNull(),
+        createdBy: uuid("created_by")
+            .references(() => users.id),
+        ...timestamps,
+    }
+);
 
 export const sales = pgTable("sales", {
   id: uuid("id").primaryKey().defaultRandom(),
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: paymentMethodEnum("payment_method").notNull(),
   soldBy: uuid("sold_by").references(() => users.id),
+  notes: text("notes"),
+  isVoided: boolean("is_voided").default(false).notNull(),
+  voidedAt: timestamp("voided_at"),
   ...timestamps,
 });
+
 
 export const saleItems = pgTable("sale_items", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -217,7 +239,11 @@ export const saleItems = pgTable("sale_items", {
       .notNull()
       .references(() => products.id),
   quantity: integer("quantity").notNull(),
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
+  costPrice: decimal("cost_price", {
+        precision: 10,
+        scale: 2,
+    }).notNull(),
   ...timestamps,
 });
 
@@ -297,17 +323,25 @@ export const productsRelations = relations(products, ({ many }) => ({
   saleItems: many(saleItems),
 }));
 
-export const salesRelations = relations(sales, ({ one, many }) => ({
-  soldBy: one(users, {
-    fields: [sales.soldBy],
-    references: [users.id],
-  }),
-  saleItems: many(saleItems),
+export const salesRelations = relations(sales, ({ many, one }) => ({
+    saleItems: many(saleItems),
+
+    soldBy: one(users, {
+        fields: [sales.soldBy],
+        references: [users.id],
+    }),
 }));
 
 export const saleItemsRelations = relations(saleItems, ({ one }) => ({
-  sale: one(sales),
-  product: one(products),
+    sale: one(sales, {
+        fields: [saleItems.saleId],
+        references: [sales.id],
+    }),
+
+    product: one(products, {
+        fields: [saleItems.productId],
+        references: [products.id],
+    }),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({

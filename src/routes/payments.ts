@@ -6,8 +6,9 @@ import { payments, memberships, members, packages } from "../db/schema";
 const router = express.Router();
 
 //receipt
-router.get("/payments/:id/receipt", async (req, res) => {
-    const { transactionGroupId } = req.body;
+// Get receipt by transaction group id
+router.get("/:transactionGroupId/receipt", async (req, res) => {
+    const { transactionGroupId } = req.params;
 
     try {
         const transactionPayments = await db
@@ -55,18 +56,35 @@ router.get("/payments/:id/receipt", async (req, res) => {
             )
             .orderBy(payments.createdAt);
 
-        if (!transactionPayments) throw Error;
+        if (!transactionPayments || transactionPayments.length === 0) {
+            return res.status(404).json({ error: "Receipt not found" });
+        }
 
         const totalPaid = transactionPayments.reduce(
-            (sum, payment) =>
-                sum + Number(payment.amount),
+            (sum, payment) => sum + Number(payment.amount),
             0
         );
 
-        // 🔥 Shared metadata
         const firstPayment = transactionPayments[0];
 
-        res.json({ data: transactionPayments });
+        res.json({
+            data: {
+                transactionGroupId,
+                totalPaid,
+                member: {
+                    id: firstPayment.memberId,
+                    name: firstPayment.memberName,
+                    phone: firstPayment.phone,
+                },
+                membership: {
+                    id: firstPayment.membershipId,
+                    packageName: firstPayment.packageName,
+                    startDate: firstPayment.startDate,
+                    endDate: firstPayment.endDate,
+                },
+                payments: transactionPayments,
+            },
+        });
 
     } catch (error) {
         console.error("Receipt fetch error:", error);

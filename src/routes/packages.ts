@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../db";
-import {memberships, packages} from "../db/schema";
+import {members, memberships, packages, products} from "../db/schema";
 import {and, desc, eq, getTableColumns, ilike, or, sql} from "drizzle-orm";
 
 const router = Router();
@@ -8,32 +8,54 @@ const router = Router();
 //get all packages with category filter
 router.get("/", async (req, res) => {
     try {
-        const { search, category } = req.query;
+        const { search, category, page = 1, limit = 10 } = req.query;
+
+        const currentPage = Math.max(1, +page);
+        const limitPerPage = Math.max(1, +limit);
+        const offset = (currentPage - 1) * limitPerPage;
+
         const filterConditions = [];
+
         if (search) {
             filterConditions.push(
                 or(
-                    ilike(packages.name, `%${search}%`)
+                    ilike(packages.name, `%${search}%`),
+                    ilike(packages.category, `%${search}%`)
                 )
-            )
+            );
         }
+
         if (category) {
-            filterConditions.push(eq(packages.category, category as any))
+            filterConditions.push(eq(packages.category, category as any));
         }
+
         const whereClause = filterConditions.length > 0 ? and(...filterConditions) : undefined;
 
+        const countResult = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(packages)
+            .where(whereClause);
+
+        const totalCount = countResult[0]?.count ?? 0;
+
         const packagesList = await db
-                .select({
-                ...getTableColumns((packages)),
-                      })
-                .from(packages)
-                .where(whereClause)
-                .orderBy(desc(packages.createdAt))
-        ;
+            .select({
+                ...getTableColumns(packages),
+            })
+            .from(packages)
+            .where(whereClause)
+            .limit(limitPerPage)
+            .offset(offset)
+            .orderBy(desc(packages.createdAt));
 
         res.status(200).json({
             data: packagesList,
-            total: packagesList.length,
+            pagination: {
+                page: currentPage,
+                limit: limitPerPage,
+                total: totalCount,
+                totalPages: Math.ceil(totalCount / limitPerPage),
+            }
         });
     } catch (error) {
         console.error("Get /packages error: ", error);

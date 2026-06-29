@@ -285,6 +285,7 @@ router.post("/", async (req, res) => {
                 member: newMember,
                 membership: newMembership,
                 payments: paymentsCreated,
+                transactionGroupId
             };
         });
 
@@ -401,10 +402,10 @@ router.post("/:id/renew", async (req, res) => {
 
             if (!newMembership) throw Error;
 
+            const transactionGroupId = randomUUID();
             const paymentsCreated = [];
 
             if (paid > 0) {
-                const transactionGroupId = randomUUID();
                 const receiptNumber = generateReceiptNumber();
 
                 const [payment] = await tx
@@ -437,6 +438,7 @@ router.post("/:id/renew", async (req, res) => {
                     balance,
                 },
                 payments: paymentsCreated,
+                transactionGroupId,
             };
         });
 
@@ -681,6 +683,7 @@ router.post("/:id/pay-balance", async (req, res) => {
                     balance: currentBalance - payAmount,
                 },
                 payment: paymentRecord,
+                transactionGroupId
             };
         });
 
@@ -705,7 +708,6 @@ router.get("/:id/payments", async (req, res) => {
     const memberId = Number(req.params.id);
 
     try {
-        // 🔹 1. Get all memberships
         const membershipsData = await db
             .select({
                 membershipId: memberships.id,
@@ -730,7 +732,6 @@ router.get("/:id/payments", async (req, res) => {
             });
         }
 
-        // 🔹 2. Get all payments
         const paymentsData = await db
             .select({
                 id: payments.id,
@@ -740,70 +741,106 @@ router.get("/:id/payments", async (req, res) => {
                 method: payments.method,
                 paidAt: payments.paidAt,
                 createdAt: payments.createdAt,
+                transactionGroupId: payments.transactionGroupId,
             })
             .from(payments)
             .innerJoin(
                 memberships,
                 eq(memberships.id, payments.membershipId)
             )
-            .where(eq(memberships.memberId, memberId))
-            .orderBy(desc(payments.paidAt));
+            .where(eq(memberships.memberId, memberId));
 
-        // 🔹 3. Build payment history grouped by membership
         const formatted = membershipsData.flatMap((membership) => {
+            const membershipPayments = paymentsData.filter(
+                (p) => p.membershipId === membership.membershipId
+            );
+
+            const groupedTransactions = Object.values(
+                membershipPayments.reduce((acc, payment) => {
+                    const key =
+                        payment.transactionGroupId ??
+                        payment.id;
+
+                    if (!acc[key]) {
+                        acc[key] = {
+                            transactionGroupId: key,
+                            paidAt: payment.paidAt,
+                            paymentMethod: payment.method,
+                            amount: 0,
+                        };
+                    }
+
+                    acc[key].amount += Number(payment.amount);
+
+                    if (
+                        new Date(payment.paidAt!).getTime() >
+                        new Date(acc[key].paidAt!).getTime()
+                    ) {
+                        acc[key].paidAt = payment.paidAt;
+                    }
+
+                    return acc;
+                }, {} as Record<string, any>)
+            ).sort(
+                (a, b) =>
+                    new Date(a.paidAt).getTime() -
+                    new Date(b.paidAt).getTime()
+            );
 
             let runningPaid = 0;
 
-            const membershipPayments = paymentsData
-                .filter(
-                    (p) => p.membershipId === membership.membershipId
-                )
-                .sort(
-                    (a, b) =>
-                        new Date(a.paidAt!).getTime() -
-                        new Date(b.paidAt!).getTime()
+            return groupedTransactions.map((transaction) => {
+                runningPaid += transaction.amount;
+
+                const balance = Math.max(
+                    Number(membership.totalAmount) - runningPaid,
+                    0
                 );
 
-            return membershipPayments.map((payment) => {
-                const amount = Number(payment.amount);
-
-                if (
-                    payment.type === "package" ||
-                    payment.type === "balance"
-                ) {
-                    runningPaid += amount;
-                }
-
-                const balance =
-                    Number(membership.totalAmount) - runningPaid;
-
                 return {
-                    id: payment.id,
+                    id: transaction.transactionGroupId,
+
                     membershipId: membership.membershipId,
 
-                    paidAt: payment.paidAt,
-                    amount,
-                    type: payment.type,
-                    paymentMethod: payment.method,
+                    paidAt: transaction.paidAt,
+
+                    amount: transaction.amount,
 
                     packageName: membership.packageName,
-                    membershipStatus: membership.status,
+
+                    totalAmount: Number(
+                        membership.totalAmount
+                    ),
+
+                    runningBalance: balance,
+
+                    paymentMethod:
+                    transaction.paymentMethod,
+
+                    transactionGroupId:
+                    transaction.transactionGroupId,
+
+                    membershipStatus:
+                    membership.status,
 
                     startDate: membership.startDate,
                     endDate: membership.endDate,
-
-                    runningBalance: Math.max(balance, 0),
 
                     receivedBy: "Admin",
                 };
             });
         });
 
-        res.json({
-            data: formatted,
-            total: formatted.length,
-        });
+        const sortedFormatted = formatted.sort(
+            (a, b) =>
+                new Date(b.paidAt!).getTime() -
+                new Date(a.paidAt!).getTime()
+        );
 
+        res.json({
+            data: sortedFormatted,
+            total: sortedFormatted.length,
+        });
     } catch (error) {
         console.error("Payments route error:", error);
 

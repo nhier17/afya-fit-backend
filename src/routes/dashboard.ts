@@ -7,7 +7,7 @@ import {
     members,
     packages,
 } from "../db/schema";
-import { sql, eq, desc, and } from "drizzle-orm";
+import {sql, eq, desc, and, gte, lte} from "drizzle-orm";
 
 const router = Router();
 
@@ -33,6 +33,8 @@ router.get("/", async (_req, res) => {
             now.getMonth() - 1,
             1
         );
+        const startOfLastYear = new Date(now.getFullYear() - 1, 0, 1);
+        const startOfCurrentYear = new Date(now.getFullYear(), 0, 1);
 
         //Execute all queries concurrently
         const [
@@ -43,6 +45,7 @@ router.get("/", async (_req, res) => {
             monthCollectionResult,
             lastMonthCollectionResult,
             yearCollectionResult,
+            lastYearCollectionResult,
             outstandingResult,
             totalMembersResult,
             activeMembersResult,
@@ -84,10 +87,22 @@ router.get("/", async (_req, res) => {
                 .from(payments)
                 .where(
                     and(
+                        sql`${payments.paidAt} >= ${startOfLastYear}`,
+                        sql`${payments.paidAt} < ${startOfCurrentYear}`
+                    )
+                ),
+
+            db.select({
+                total: sql<number>`COALESCE(SUM(${payments.amount}), 0)`,
+            })
+                .from(payments)
+                .where(
+                    and(
                         sql`${payments.paidAt} >= ${startOfYesterday}`,
                         sql`${payments.paidAt} < ${startOfToday}`
                     )
                 ),
+
 
             db.select({
                 total: sql<number>`COALESCE(SUM(${payments.amount}), 0)`,
@@ -189,6 +204,7 @@ router.get("/", async (_req, res) => {
         const monthCollection = monthCollectionResult[0];
         const lastMonthCollection = lastMonthCollectionResult[0];
         const yearCollection = yearCollectionResult[0];
+        const lastYearCollection = lastYearCollectionResult[0];
         const outstanding = outstandingResult[0];
         const totalMembers = totalMembersResult[0];
         const activeMembers = activeMembersResult[0];
@@ -203,6 +219,8 @@ router.get("/", async (_req, res) => {
         const yesterdayRev = Number(yesterdayCollection?.total);
         const monthRev = Number(monthCollection?.total);
         const lastMonthRev = Number(lastMonthCollection?.total);
+        const yearRev = Number(yearCollection?.total);
+        const lastYearRev = Number(lastYearCollection?.total);
 
         //trends
         const todayVsYesterday =
@@ -214,6 +232,11 @@ router.get("/", async (_req, res) => {
             lastMonthRev === 0
                 ? 100
                 : ((monthRev - lastMonthRev) / lastMonthRev) * 100;
+
+        const yearVsLastYear =
+            lastYearRev === 0
+                ? 100
+                : ((yearRev - lastYearRev) / lastYearRev) * 100;
 
         //Format Payment Methods
         const formattedPayments: Record<string, number> = {
@@ -252,7 +275,8 @@ router.get("/", async (_req, res) => {
                     })),
                     trends: {
                         todayVsYesterday,
-                        monthVsLastMonth
+                        monthVsLastMonth,
+                        yearVsLastYear,
                     }
                 },
                 members: {
@@ -271,6 +295,60 @@ router.get("/", async (_req, res) => {
         res.status(500).json({
             success: false,
             message: "Failed to fetch dashboard stats",
+        });
+    }
+});
+
+router.get("/expiring-memberships", async (req, res) => {
+    try {
+        const days = Number(req.query.days ?? 7);
+
+        const today = new Date();
+
+        const futureDate = new Date();
+        futureDate.setDate(today.getDate() + days);
+
+        const expiringMembers = await db
+            .select({
+                memberId: members.id,
+                firstName: members.firstName,
+                lastName: members.lastName,
+                phone: members.phone,
+
+                membershipId: memberships.id,
+                endDate: memberships.endDate,
+                packageName: packages.name,
+
+                totalAmount: memberships.totalAmount,
+                paidAmount: memberships.paidAmount,
+            })
+            .from(memberships)
+            .innerJoin(
+                members,
+                eq(members.id, memberships.memberId)
+            )
+            .innerJoin(
+                packages,
+                eq(packages.id, memberships.packageId)
+            )
+            .where(
+                and(
+                    eq(memberships.status, "active"),
+                    gte(memberships.endDate, today),
+                    lte(memberships.endDate, futureDate)
+                )
+            );
+
+        res.json({
+            count: expiringMembers.length,
+            data: expiringMembers,
+        });
+
+    } catch (error) {
+        console.error("Expiring memberships error:", error);
+
+        res.status(500).json({
+            error: "Failed to fetch expiring memberships",
         });
     }
 });

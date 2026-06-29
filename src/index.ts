@@ -10,6 +10,8 @@ import paymentsRoutes from "./routes/payments";
 import expensesRoutes from "./routes/expenses";
 import dashboardRoutes from "./routes/dashboard";
 import dailyRoutes from "./routes/daily";
+import productsRoutes from "./routes/products";
+import salesRoutes from "./routes/sales";
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -31,6 +33,8 @@ app.use("/api/payments", paymentsRoutes);
 app.use("/api/expenses", expensesRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/daily", dailyRoutes);
+app.use("/api/products", productsRoutes);
+app.use("/api/sales", salesRoutes);
 
 autoExpireMemberships();
 

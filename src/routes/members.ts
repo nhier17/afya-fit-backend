@@ -36,6 +36,10 @@ router.get("/", async (req, res) => {
             filterConditions.push(eq(members.gender, gender as any));
         }
 
+        if (status) {
+            filterConditions.push(eq(memberships.status, status as any));
+        }
+
         // 🔹 Membership filter (handled separately)
         const membershipFilter = status
             ? eq(memberships.status, status as any)
@@ -301,6 +305,147 @@ router.post("/", async (req, res) => {
         return res.status(500).json({
             success: false,
             message: error.message || "Failed to register member",
+        });
+    }
+});
+
+// GET /members/expired-members
+router.get("/expired", async (req, res) => {
+    try {
+        const {
+            packageId,
+            search,
+            period,
+            page = 1,
+            limit = 10,
+        } = req.query;
+
+        const currentPage = Math.max(1, Number(page));
+        const limitPerPage = Math.max(1, Number(limit));
+        const offset = (currentPage - 1) * limitPerPage;
+
+        // Base filter -> only expired memberships
+        const filterConditions = [
+            sql`${memberships.endDate} < NOW()`,
+        ];
+
+        if (search) {
+            filterConditions.push(
+                or(
+                    ilike(members.firstName, `%${search}%`),
+                    ilike(members.lastName, `%${search}%`),
+                    ilike(members.phone, `%${search}%`)
+                )!
+            );
+        }
+
+        if (packageId) {
+            filterConditions.push(
+                eq(memberships.packageId, Number(packageId))
+            );
+        }
+
+        if (period === "today") {
+            filterConditions.push(
+                sql`DATE(${memberships.endDate}) = CURRENT_DATE`
+            );
+        }
+
+        if (period === "7days") {
+            filterConditions.push(
+                sql`${memberships.endDate} >= NOW() - INTERVAL '7 days'`
+            );
+        }
+
+        if (period === "month") {
+            filterConditions.push(
+                sql`
+            DATE_TRUNC('month', ${memberships.endDate}) =
+            DATE_TRUNC('month', NOW())
+        `
+            );
+        }
+
+        const whereClause = and(...filterConditions);
+
+        // Total records
+        const countResult = await db
+            .select({
+                count: sql<number>`count(*)`,
+            })
+            .from(memberships)
+            .innerJoin(
+                members,
+                eq(members.id, memberships.memberId)
+            )
+            .where(whereClause);
+
+        const totalCount = countResult[0]?.count ?? 0;
+
+        // Expired members
+        const expiredMembers = await db
+            .select({
+                id: members.id,
+                membershipId: memberships.id,
+                firstName: members.firstName,
+                lastName: members.lastName,
+                phone: members.phone,
+                packageId: packages.id,
+                packageName: packages.name,
+                startDate: memberships.startDate,
+                endDate: memberships.endDate,
+                status: memberships.status,
+            })
+            .from(memberships)
+            .innerJoin(
+                members,
+                eq(members.id, memberships.memberId)
+            )
+            .innerJoin(
+                packages,
+                eq(packages.id, memberships.packageId)
+            )
+            .where(whereClause)
+            .orderBy(desc(memberships.endDate))
+            .limit(limitPerPage)
+            .offset(offset);
+
+        // Format response
+        const formatted = expiredMembers.map((member) => {
+            const daysExpired = Math.max(
+                Math.floor(
+                    (Date.now() -
+                        new Date(member.endDate).getTime()) /
+                    (1000 * 60 * 60 * 24)
+                ),
+                0
+            );
+
+            return {
+                ...member,
+                daysExpired,
+                isActive: false,
+                status: "expired",
+            };
+        });
+
+        return res.json({
+            data: formatted,
+            pagination: {
+                total: totalCount,
+                page: currentPage,
+                limit: limitPerPage,
+                totalPages: Math.ceil(totalCount / limitPerPage),
+            },
+        });
+    } catch (error) {
+        console.error(
+            "GET /expired-members error:",
+            error
+        );
+
+        return res.status(500).json({
+            error: "Failed to fetch expired members",
         });
     }
 });

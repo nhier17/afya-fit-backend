@@ -5,43 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1777812729149,
-      "tag": "0000_material_justin_hammer",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1777873316824,
-      "tag": "0001_high_speed_demon",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1777877380404,
-      "tag": "0002_last_tony_stark",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1778486907581,
-      "tag": "0003_broad_black_widow",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1782115824827,
-      "tag": "0004_wonderful_zombie",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1782197646511,
-      "tag": "0005_zippy_weapon_omega",
+      "when": 1784616182400,
+      "tag": "0000_violet_lockjaw",
       "breakpoints": true
     }
   ]

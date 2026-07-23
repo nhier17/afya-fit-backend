@@ -1,10 +1,12 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { toNodeHandler} from "better-auth/node";
 
 import {autoExpireMemberships} from "./cron/expire";
 
 import membersRoutes from "./routes/members";
+import userRoutes from "./routes/users";
 import packagesRoutes from "./routes/packages";
 import paymentsRoutes from "./routes/payments";
 import expensesRoutes from "./routes/expenses";
@@ -12,6 +14,8 @@ import dashboardRoutes from "./routes/dashboard";
 import dailyRoutes from "./routes/daily";
 import productsRoutes from "./routes/products";
 import salesRoutes from "./routes/sales";
+import {auth} from "./lib/auth";
+
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -25,9 +29,12 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+app.all("/api/auth/*splat", toNodeHandler(auth));
+
 app.use(express.json());
 
 app.use("/api/members", membersRoutes);
+app.use("/api/users", userRoutes);
 app.use("/api/packages", packagesRoutes);
 app.use("/api/payments", paymentsRoutes);
 app.use("/api/expenses", expensesRoutes);

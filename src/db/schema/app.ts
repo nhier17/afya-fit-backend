@@ -8,10 +8,10 @@ import {
   boolean,
   integer,
   varchar,
-  jsonb,
   index
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import {user} from "./auth";
 
 const timestamps = {
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -211,8 +211,8 @@ export const inventoryMovements = pgTable(
             .references(() => products.id, { onDelete: "cascade" }),
         quantity: integer("quantity").notNull(),
         type: text("type").notNull(),
-        createdBy: uuid("created_by")
-            .references(() => users.id),
+        createdBy: text("created_by")
+            .references(() => user.id, { onDelete: "cascade"}),
         ...timestamps,
     }
 );
@@ -222,7 +222,7 @@ export const sales = pgTable("sales", {
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: paymentMethodEnum("payment_method").notNull(),
-  soldBy: uuid("sold_by").references(() => users.id),
+  soldBy: text("sold_by").references(() => user.id),
   notes: text("notes"),
   isVoided: boolean("is_voided").default(false).notNull(),
   voidedAt: timestamp("voided_at"),
@@ -256,25 +256,6 @@ export const expenses = pgTable("expenses", {
   createdBy: uuid("created_by"),
   ...timestamps,
 });
-
-export const roles = pgTable("roles", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull().unique(),
-  permissions: jsonb("permissions").notNull(),
-});
-
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  email: varchar("email", { length: 150 }).notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
-  roleId: uuid("role_id")
-      .notNull()
-      .references(() => roles.id, { onDelete: "restrict" }),
-  isActive: boolean("is_active").default(true).notNull(),
-  ...timestamps,
-});
-
 
 export const smsLogs = pgTable("sms_logs", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -326,9 +307,9 @@ export const productsRelations = relations(products, ({ many }) => ({
 export const salesRelations = relations(sales, ({ many, one }) => ({
     saleItems: many(saleItems),
 
-    soldBy: one(users, {
+    soldBy: one(user, {
         fields: [sales.soldBy],
-        references: [users.id],
+        references: [user.id],
     }),
 }));
 
@@ -342,18 +323,6 @@ export const saleItemsRelations = relations(saleItems, ({ one }) => ({
         fields: [saleItems.productId],
         references: [products.id],
     }),
-}));
-
-export const usersRelations = relations(users, ({ one, many }) => ({
-  role: one(roles, {
-    fields: [users.roleId],
-    references: [roles.id],
-  }),
-  sales: many(sales),
-}));
-
-export const rolesRelations = relations(roles, ({ many }) => ({
-  users: many(users),
 }));
 
 export const smsLogsRelations = relations(smsLogs, ({ one }) => ({

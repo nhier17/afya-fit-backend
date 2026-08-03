@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "../db";
 import { products, inventoryMovements, saleItems, sales } from "../db/schema";
-import { and, desc, eq, sql, inArray } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
+import {requireAuth} from "../middleware/auth";
 
 const router = Router();
 
@@ -62,11 +63,10 @@ router.get("/", async (req, res) => {
 });
 
 // POST /sales
-router.post("/", async (req, res) => {
+router.post("/",requireAuth, async (req, res) => {
     try {
         const {
             paymentMethod,
-            soldBy,
             notes,
             discountAmount = 0,
             items,
@@ -159,7 +159,7 @@ router.post("/", async (req, res) => {
                     totalAmount: finalTotal.toString(),
                     discountAmount: discountAmount.toString(),
                     paymentMethod,
-                    soldBy: soldBy ?? null,
+                    soldBy: req.user!.id,
                     notes: notes ?? null,
                     isVoided: false,
                 })
@@ -193,7 +193,7 @@ router.post("/", async (req, res) => {
                     productId: update.productId,
                     quantity: -update.quantity,
                     type: "sale",
-                    createdBy: soldBy ?? null,
+                    createdBy: req.user!.id,
                 });
             }
 
@@ -310,7 +310,7 @@ router.post("/:id/void", async (req, res) => {
                 productId: item.productId,
                 quantity: item.quantity, // Positive quantity to restore
                 type: "voided_sale",
-                // createdBy could be passed in body if needed, defaulting to null here
+                createdBy: req.user!.id,
             }));
 
             if (inventoryMovementsToInsert.length > 0) {

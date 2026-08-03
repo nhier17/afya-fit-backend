@@ -208,11 +208,11 @@ export const inventoryMovements = pgTable(
         id: uuid("id").primaryKey().defaultRandom(),
         productId: uuid("product_id")
             .notNull()
-            .references(() => products.id, { onDelete: "cascade" }),
+            .references(() => products.id, { onDelete: "set null" }),
         quantity: integer("quantity").notNull(),
         type: text("type").notNull(),
         createdBy: text("created_by").notNull()
-            .references(() => user.id, { onDelete: "cascade"}),
+            .references(() => user.id, { onDelete: "set null"}),
         ...timestamps,
     }
 );
@@ -222,7 +222,7 @@ export const sales = pgTable("sales", {
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: paymentMethodEnum("payment_method").notNull(),
-  soldBy: text("sold_by").notNull().references(() => user.id, { onDelete: "cascade" }),
+  soldBy: text("sold_by").notNull().references(() => user.id, { onDelete: "set null" }),
   notes: text("notes"),
   isVoided: boolean("is_voided").default(false).notNull(),
   voidedAt: timestamp("voided_at"),

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import {expenses, products} from "../db/schema";
 import {and, desc, eq, getTableColumns, ilike, or, sql} from "drizzle-orm";
+import {requireAuth} from "../middleware/auth";
 
 const router = Router();
 
@@ -59,7 +60,7 @@ router.get("/", async (req, res) => {
 });
 
 // CREATE EXPENSE
-router.post("/", async (req, res) => {
+router.post("/", requireAuth, async (req, res) => {
     const { name, amount, datePaid, description } = req.body;
 
     try {
@@ -84,6 +85,7 @@ router.post("/", async (req, res) => {
                 category: name,
                 amount: amount.toString(),
                 expenseDate: new Date(datePaid),
+                createdBy: req.user!.id
             })
             .returning();
 

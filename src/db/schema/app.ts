@@ -166,7 +166,7 @@ export const payments = pgTable("payments", {
   type: paymentTypeEnum("type").notNull(),
   receiptNumber: varchar("receipt_number", { length: 50 }).notNull().unique(),
   notes: text("notes"),
-  recordedBy: integer("recorded_by"),
+  recordedBy: text("recorded_by").notNull().references(() => user.id, { onDelete: "cascade" }),
   transactionReference: varchar("transaction_reference", { length: 255 }),
   transactionGroupId: uuid("transaction_group_id").notNull(),
   paidAt: timestamp("paid_at"),
@@ -211,7 +211,7 @@ export const inventoryMovements = pgTable(
             .references(() => products.id, { onDelete: "cascade" }),
         quantity: integer("quantity").notNull(),
         type: text("type").notNull(),
-        createdBy: text("created_by")
+        createdBy: text("created_by").notNull()
             .references(() => user.id, { onDelete: "cascade"}),
         ...timestamps,
     }
@@ -222,7 +222,7 @@ export const sales = pgTable("sales", {
   totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
   discountAmount: decimal("discount_amount", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: paymentMethodEnum("payment_method").notNull(),
-  soldBy: text("sold_by").references(() => user.id),
+  soldBy: text("sold_by").notNull().references(() => user.id, { onDelete: "cascade" }),
   notes: text("notes"),
   isVoided: boolean("is_voided").default(false).notNull(),
   voidedAt: timestamp("voided_at"),
@@ -253,7 +253,7 @@ export const expenses = pgTable("expenses", {
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   expenseDate: timestamp("expense_date").defaultNow().notNull(),
   description: text("description"),
-  createdBy: uuid("created_by"),
+  createdBy: text("created_by").notNull().references(() => user.id, { onDelete: "cascade" }),
   ...timestamps,
 });
 

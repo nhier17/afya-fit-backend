@@ -1,7 +1,7 @@
 import express from "express";
 import { and, desc, eq, ilike, or, sql, getTableColumns } from "drizzle-orm";
 import { db } from "../db";
-import {user} from "../db/schema/auth";
+import {user} from "../db/schema";
 
 const router = express.Router();
 
@@ -57,5 +57,27 @@ router.get("/", async (req, res) => {
         res.status(500).json({ error: "Failed to fetch users" });
     }
 });
+
+//get user details
+router.get("/:id", async (req, res) => {
+    try {
+        const userId = req.params.id;
+
+        const [userRecord] = await db
+            .select()
+            .from(user)
+            .where(eq(user.id, userId));
+
+        if (!userRecord) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        res.status(200).json({ data: userRecord });
+
+    } catch (error) {
+        console.error("GET /users/:id error:", error);
+        res.status(500).json({ error: "Failed to fetch user" });
+    }
+})
 
 export default router

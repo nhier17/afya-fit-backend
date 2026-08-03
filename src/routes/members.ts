@@ -1,9 +1,11 @@
 import express from "express";
 import { eq, ilike, or, and, desc, sql, asc } from "drizzle-orm";
 import { db } from "../db";
-import { members, memberships, packages, payments } from "../db/schema";
+import {members, memberships, packages, payments, user} from "../db/schema";
 import {generateReceiptNumber} from "../lib/utils";
 import { randomUUID} from "node:crypto";
+import {requireAuth} from "../middleware/auth";
+import {requireRole} from "../middleware/authorize";
 
 const router = express.Router();
 
@@ -142,7 +144,7 @@ router.get("/", async (req, res) => {
 });
 
 //register new member
-router.post("/", async (req, res) => {
+router.post("/",requireAuth, async (req, res) => {
     const {
         firstName,
         lastName,
@@ -246,6 +248,7 @@ router.post("/", async (req, res) => {
                     receiptNumber,
                     transactionGroupId,
                     paidAt: paymentDate ? new Date(paymentDate) : new Date(),
+                   recordedBy: req.user!.id
                 }).returning();
 
                paymentsCreated.push(payment);
@@ -262,6 +265,7 @@ router.post("/", async (req, res) => {
                     method: paymentMethod,
                     receiptNumber,
                     transactionGroupId,
+                    recordedBy: req.user!.id,
                     paidAt: paymentDate ? new Date(paymentDate) : new Date(),
                 }).returning();
 
@@ -451,7 +455,7 @@ router.get("/expired", async (req, res) => {
 });
 
 //renew membership
-router.post("/:id/renew", async (req, res) => {
+router.post("/:id/renew",requireAuth, async (req, res) => {
     const memberId = Number(req.params.id);
 
     const {
@@ -562,6 +566,7 @@ router.post("/:id/renew", async (req, res) => {
                         method: paymentMethod,
                         receiptNumber,
                         transactionGroupId,
+                        recordedBy: req.user!.id,
                         paidAt,
                     })
                     .returning();
@@ -748,7 +753,7 @@ router.get("/:id", async (req, res) => {
 });
 
 //pay members balance
-router.post("/:id/pay-balance", async (req, res) => {
+router.post("/:id/pay-balance", requireAuth, async (req, res) => {
     const memberId = Number(req.params.id);
     const { amount, paymentMethod, paymentDate } = req.body;
 
@@ -810,6 +815,7 @@ router.post("/:id/pay-balance", async (req, res) => {
                     receiptNumber,
                     transactionGroupId,
                     paidAt,
+                    recordedBy: req.user!.id
                 })
                 .returning();
 
@@ -887,11 +893,17 @@ router.get("/:id/payments", async (req, res) => {
                 paidAt: payments.paidAt,
                 createdAt: payments.createdAt,
                 transactionGroupId: payments.transactionGroupId,
+                recordedById: payments.recordedBy,
+                recordedByName: user.name,
             })
             .from(payments)
             .innerJoin(
                 memberships,
                 eq(memberships.id, payments.membershipId)
+            )
+            .leftJoin(
+                user,
+                eq(user.id, payments.recordedBy)
             )
             .where(eq(memberships.memberId, memberId));
 
@@ -912,6 +924,8 @@ router.get("/:id/payments", async (req, res) => {
                             paidAt: payment.paidAt,
                             paymentMethod: payment.method,
                             amount: 0,
+                            recordedById: payment.recordedById,
+                            recordedByName: payment.recordedByName,
                         };
                     }
 
@@ -967,11 +981,9 @@ router.get("/:id/payments", async (req, res) => {
 
                     membershipStatus:
                     membership.status,
-
                     startDate: membership.startDate,
                     endDate: membership.endDate,
-
-                    receivedBy: "Admin",
+                    recordedByName: transaction.recordedByName,
                 };
             });
         });
